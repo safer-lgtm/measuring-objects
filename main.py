@@ -2,46 +2,46 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def load_image(image_path):
+# ----------------- 1. Bildaufnahme -----------------
+def load_and_resize(image_path, scale_percent):
     image = cv2.imread(image_path)
     if image is None:
-        raise FileNotFoundError(f"Bild konnte nicht geladen werden: {image_path}")
-    return image
-
-def resize(image, scale_percent):
+        raise FileNotFoundError("Bild konnte nicht geladen werden.")
     width = int(image.shape[1] * scale_percent / 100)
     height = int(image.shape[0] * scale_percent / 100)
     return cv2.resize(image, (width, height))
 
-def image_preprocessing(image, bin_thresh=125):
-    kernel = np.ones((3, 3), np.uint8)
-
+# ----------------- 2. Bildvorverarbeitung -----------------
+def preprocess_image(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, binary = cv2.threshold(gray, bin_thresh, 255, cv2.THRESH_BINARY_INV)
+    return gray
 
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel=kernel, iterations=5)
-    edges = cv2.Canny(closed, threshold1=bin_thresh, threshold2=bin_thresh + 50)
+# ----------------- 3. Kantenextraktion -----------------
+def extract_edges(gray, thresh):
+    kernel = np.ones((3, 3), np.uint8)
+    _, binary = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY_INV)
+    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=5)
+    edges = cv2.Canny(closed, 130, 180)
+    return binary, closed, edges
 
-    #dilated = cv2.dilate(edges, kernel=kernel, iterations=1)
-
-    return {
-        "Original": image,
-        "Graustufen": gray,
-        "Binarisiert": binary,
-        "Closing": closed,
-        "Canny Edges": edges
-    }
-
-# --- Einstellungen ---
+# ----------------- Hauptablauf -----------------
+input_path = "images/inpus.jpg"
 scale_percent = 30
-input_image_path = "images/inpus.jpg"
+thresh = 125
 
-# --- Ausführung ---
-image = load_image(input_image_path)
-resized_image = resize(image, scale_percent)
-processed_images = image_preprocessing(resized_image)
+image = load_and_resize(input_path, scale_percent)
+gray = preprocess_image(image)
+binary, closed, edges = extract_edges(gray, thresh)
 
-# --- Darstellung ---
+# ----------------- Darstellung -----------------
+processed_images = {
+    "Original": image,
+    "Graustufen": gray,
+    "Binarisiert": binary,
+    "Closing": closed,
+    "Kanten (Canny)": edges
+}
+
 fig, axs = plt.subplots(3, 3, figsize=(20, 12), facecolor='white')
 axs = axs.flatten()
 
