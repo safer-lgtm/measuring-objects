@@ -8,19 +8,37 @@ def load_and_resize(image_path, scale_percent):
     if image is None:
         raise FileNotFoundError("Bild konnte nicht geladen werden.")
     width = int(image.shape[1] * scale_percent / 100)
-    height = int(image.shape[0] * scale_percent / 100)
-    return cv2.resize(image, (width, height))
+    h = int(image.shape[0] * scale_percent / 100)
+    return cv2.resize(image, (width, h))
 
 # ----------------- 2. Bildvorverarbeitung -----------------
 def preprocess_image(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return gray
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
+def euclidean_distance(p1, p2):
+    return np.linalg.norm(np.array(p1) - np.array(p2))
+
+def calculate_pixels_per_mm(polygon, a4_w_mm, a4_p_mm):
+    # Seiten messen
+    top_w     = euclidean_distance(polygon[0], polygon[1])  # oben
+    bottom_w  = euclidean_distance(polygon[2], polygon[3])  # unten
+    left_h   = euclidean_distance(polygon[0], polygon[3])  # links
+    right_h  = euclidean_distance(polygon[1], polygon[2])  # rechts
+    # Mittelwerte nehmen
+    avg_w_pixels = (top_w + bottom_w) / 2
+    avg_h_pixels = (left_h + right_h) / 2
+    # px/mm berechnen
+    pixels_per_mm_w = avg_w_pixels / a4_w_mm
+    pixels_per_mm_h = avg_h_pixels / a4_p_mm
+    return (pixels_per_mm_w + pixels_per_mm_h) / 2
+
+def px_to_mm(pixel_dist, pixels_per_mm):
+    return pixel_dist / pixels_per_mm
 # ----------------- 3. Kantenextraktion -----------------
 def extract_edges(gray, thresh):
     kernel = np.ones((3, 3), np.uint8)
     _, binary = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY_INV)
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=5)
+    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=4)
     edges = cv2.Canny(closed, thresh, thresh + 50)
     dilated = cv2.dilate(edges, kernel, iterations=1)
     return binary, closed, edges, dilated
@@ -29,7 +47,7 @@ def extract_edges(gray, thresh):
 def apply_hough_inbus(edges, image):
     img = image.copy()
     lines = cv2.HoughLinesP(edges, 1, np.pi / 180,
-                            threshold=50, minLineLength=30, maxLineGap=10)
+                            threshold=50, minLineLength=20, maxLineGap=10)
     h, w = img.shape[:2]
     center_x = w // 2
     center_y = h // 2
@@ -37,11 +55,12 @@ def apply_hough_inbus(edges, image):
     if lines is not None:
         for line in lines:
             x1, y1, x2, y2 = line[0]
-            euc_dist = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            # Distanz berechnen
+            euc_dist = euclidean_distance((x1, y1), (x2, y2))
             mx = (x1 + x2) // 2
             my = (y1 + y2) // 2
             # Nur Linien im Zentrum
-            if abs(mx - center_x) < 0.25 * w and abs(my - center_y) < 0.25 * h:
+            if abs(mx - center_x) < 0.5 * w and abs(my - center_y) < 0.5 * h:
                 selected_lines.append((euc_dist, (x1, y1, x2, y2)))
         # Nach Länge sortieren, größte zuerst
         selected_lines = sorted(selected_lines, key=lambda x: x[0], reverse=True)
@@ -50,26 +69,42 @@ def apply_hough_inbus(edges, image):
             cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)  # lang = grün
 
         if len(selected_lines) >= 2:
-            x1, y1, x2, y2 = selected_lines[-3][1]
+            x1, y1, x2, y2 = selected_lines[-2][1]
             cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 3)  # kurz = rot
     return img
 
+def apply_hough_inbus_all(edges, image):
+    img = image.copy()
+    h, w = img.shape[:2]
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50,
+                            minLineLength=30, maxLineGap=10)
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+            # Optional: nur Linien über 25px Länge anzeigen
+            if length:
+                cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    return img
+
 # ----------------- Hauptablauf -----------------
-input_path = "images/inpus.jpg"
+input_path = "images/inpus-2.jpg"
 scale_percent = 35
-thresh = 110
+thresh = 125
+a4_w_mm = 210
+a4_h_mm = 270
 
 image = load_and_resize(input_path, scale_percent)
 gray = preprocess_image(image)
 binary, closed, edges, dilated = extract_edges(gray, thresh)
-hough_result =  apply_hough_inbus(dilated, image)
+hough_result =  apply_hough_inbus_all(dilated, image)
 
 # ----------------- Darstellung -----------------
 processed_images = {
     "Original": image,
     "Graustufen": gray,
     "Binarisiert": binary,
-    "Closing": closed,
+    "Closing": closed, # n.Delation + n.Erosion
     "Kanten (Canny)": edges,
     "Hough-Linien": hough_result
 }
@@ -89,5 +124,5 @@ for ax in axs[len(processed_images):]:
     ax.axis('off')
 
 plt.tight_layout()
-plt.subplots_adjust(wspace=0.05, hspace=0.15)
+plt.subplots_adjust(wspace=0.15, hspace=0.15)
 plt.show()
