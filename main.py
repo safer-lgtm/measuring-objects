@@ -22,54 +22,50 @@ def preprocess_image(image, bin_thresh):
     dilated = cv2.dilate(edges, kernel, iterations=1)
     return binary, closed, edges, dilated
 
-# ----------------- 3a. Hough für Inbusschlüssel Linien -----------------
-def apply_hough_center_lines(image, processed_image, pixels_per_mm):
+# ----------------- 3a. Hough-Transformation -----------------
+def apply_hough_lines(image, processed_image, pixels_per_mm, mode="center"):
     img = image.copy()
-    lines = cv2.HoughLinesP(processed_image, rho=1, theta=np.pi/180, threshold=15,
-                            minLineLength=10, maxLineGap=5) # Hough-Linien
+    if mode == "center":
+        threshold, min_line_length, max_line_gap = 15, 10, 5
+    elif mode == "a4":
+        threshold, min_line_length, max_line_gap = 50, 100, 20
+    else:
+        raise ValueError("Unbekannter Modus für apply_hough_lines")
+
+    lines = cv2.HoughLinesP(processed_image, rho=1, theta=np.pi/180,
+                            threshold=threshold, minLineLength=min_line_length, maxLineGap=max_line_gap)
     if lines is None:
-        return img
+        return None, img
+
     h, w = img.shape[:2]
     cx, cy = w // 2, h // 2
     selected_lines = []
     for x1, y1, x2, y2 in lines.reshape(-1, 4):
-        # Linien im Zentrum hervorheben
-        mid_x, mid_y = (x1 + x2) // 2, (y1 + y2) // 2
-        if abs(mid_x - cx) < 0.25 * w and abs(mid_y - cy) < 0.25 * h:
-            length = np.hypot(x2 - x1, y2 - y1) # Die Euklidische Distanz berechnen
-            selected_lines.append((length, (x1, y1, x2, y2)))
-    if not selected_lines:
-        return img
-    selected_lines.sort(key=lambda x: x[0], reverse=True) # Absteigend sortieren
-    longest = selected_lines[0] # längste Linie
-    shortest = selected_lines[4] if len(selected_lines) > 4 else selected_lines[-1] # kürzeste
-    # Umrechnung in mm
-    pixels_per_mm = calculate_pixels_per_mm(img.shape)
-    # Annotation im Image
-    for length, (x1, y1, x2, y2) in [longest, shortest]:
-        length_mm = px_to_mm(length, pixels_per_mm)
-        draw_line_with_text(img, x1, y1, x2, y2, length_mm)
-    return img
-
-# ----------------- 3b. Hough für A4-Blatt Linien -----------------
-def apply_hough_a4_lines(image, processed_image):
-    img = image.copy()
-    lines = cv2.HoughLinesP(processed_image, rho=1, theta=np.pi/180, threshold=50,
-                            minLineLength=100, maxLineGap=20)  # stärkere Filter für A4 Konturen
-    if lines is None:
-        return None, img
-    h, w = img.shape[:2]
-    selected_lines = []
-    for x1, y1, x2, y2 in lines.reshape(-1, 4):
-        # Lange Linien filtern
         length = np.hypot(x2 - x1, y2 - y1)
-        if length > 0.5 * min(w, h):  # nur sehr lange Linien behalten
-            selected_lines.append((length, (x1, y1, x2, y2)))
+        if mode == "center":
+            mid_x = (x1 + x2) // 2
+            mid_y = (y1 + y2) // 2
+            if abs(mid_x - cx) < 0.25 * w and abs(mid_y - cy) < 0.25 * h:
+                selected_lines.append((length, (x1, y1, x2, y2)))
+        elif mode == "a4":
+            if length > 0.5 * min(w, h):
+                selected_lines.append((length, (x1, y1, x2, y2)))
+
     if not selected_lines:
         return None, img
-    # Linien ins Bild zeichnen
-    for length, (x1, y1, x2, y2) in selected_lines:
-        cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+    if mode == "center":
+        selected_lines.sort(key=lambda x: x[0], reverse=True)
+        longest = selected_lines[0]
+        shortest = selected_lines[4] if len(selected_lines) > 4 else selected_lines[-1]
+        for length, (x1, y1, x2, y2) in [longest, shortest]:
+            cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)
+            if pixels_per_mm:
+                length_mm = px_to_mm(length, pixels_per_mm)
+                draw_line_with_text(img, x1, y1, x2, y2, length_mm)
+    elif mode == "a4":
+        for length, (x1, y1, x2, y2) in selected_lines:
+            cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)
     return selected_lines, img
 
 # ----------------- 4. Längenmessung in mm -----------------
@@ -82,8 +78,7 @@ def calculate_pixels_per_mm(image_shape, a4_width_mm=210, a4_height_mm=297):
 def px_to_mm(pixel_length, pixels_per_mm):
     return pixel_length / pixels_per_mm
 
-def draw_line_with_text(img, x1, y1, x2, y2, length_mm, color=(0, 255, 0)):
-    cv2.line(img, (x1, y1), (x2, y2), color, 3)
+def draw_line_with_text(img, x1, y1, x2, y2, length_mm):
     mid_x = (x1 + x2) // 2
     mid_y = (y1 + y2) // 2
     cv2.putText(img,
@@ -117,23 +112,20 @@ def main():
     img = load_and_resize(image_path="images/inpus-4.jpg")
     binary, closed, edges, dilated = preprocess_image(img, bin_thresh=100)
 
-    # A4 Linien erkennen
-    a4_lines, a4_img = apply_hough_a4_lines(img, dilated)
-    if a4_lines:
-        pixels_per_mm = calculate_pixels_per_mm(img.shape)
-        # Inbus Linien erkennen (nur Zentrum)
-        hough_img = apply_hough_center_lines(img, dilated, pixels_per_mm)
+    pixels_per_mm = calculate_pixels_per_mm(img.shape)
+    a4_lines, a4_img = apply_hough_lines(img, dilated, pixels_per_mm=pixels_per_mm, mode="a4")
+    center_lines, hough_img = apply_hough_lines(img, dilated, pixels_per_mm=pixels_per_mm, mode="center")
 
-        steps = {
-            "Original_resized": img,
-            "Binary": binary,
-            "Closing": closed,
-            "Canny": edges,
-            "Dilated": dilated,
-            "A4_detected_Hough": a4_img,
-            "Hough_Lines_Center": hough_img
-        }
-        save_steps(steps)
+    steps = {
+        "Original_resized": img,
+        "Binary": binary,
+        "Closing": closed,
+        "Canny": edges,
+        "Dilated": dilated,
+        "A4_detected_Hough": a4_img,
+        "Hough_Lines_Center": hough_img
+    }
+    save_steps(steps)
 
 if __name__ == '__main__':
     main()
