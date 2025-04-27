@@ -22,7 +22,7 @@ def preprocess_image(image, bin_thresh):
     dilated = cv2.dilate(edges, kernel, iterations=1)
     return binary, closed, edges, dilated
 
-# ----------------- 3a. Hough-Transformation -----------------
+# ----------------- 3. Hough-Transformation -----------------
 def apply_hough_lines(image, processed_image, pixels_per_mm, mode="center"):
     img = image.copy()
     if mode == "center":
