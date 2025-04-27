@@ -26,7 +26,7 @@ In modernen Fräsmaschinen kann ein falsch dimensionierter Rohling zur Kollision
 
 ## Vorgehensweise
 
-![Konzept.png](images/Konzept.png)
+![Konzept V2.png](images/Konzept V2.png)
 
 
 ## Besonderheiten

@@ -1,128 +1,112 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
+import os
 
-# ----------------- 1. Bildaufnahme -----------------
-def load_and_resize(image_path, scale_percent):
+# ----------------- 1. Bildaufnahme & Resize -----------------
+def load_and_resize(image_path):
     image = cv2.imread(image_path)
     if image is None:
-        raise FileNotFoundError("Bild konnte nicht geladen werden.")
-    width = int(image.shape[1] * scale_percent / 100)
-    h = int(image.shape[0] * scale_percent / 100)
-    return cv2.resize(image, (width, h))
+        raise FileNotFoundError(f"Bild '{image_path}' konnte nicht geladen werden.")
+    h, w = image.shape[:2]
+    new_w = int(w * 0.4)
+    new_h = int(h * 0.4)
+    return cv2.resize(image, (new_w, new_h))
 
 # ----------------- 2. Bildvorverarbeitung -----------------
-def preprocess_image(image):
-    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-def euclidean_distance(p1, p2):
-    return np.linalg.norm(np.array(p1) - np.array(p2))
-
-def calculate_pixels_per_mm(polygon, a4_w_mm, a4_p_mm):
-    # Seiten messen
-    top_w     = euclidean_distance(polygon[0], polygon[1])  # oben
-    bottom_w  = euclidean_distance(polygon[2], polygon[3])  # unten
-    left_h   = euclidean_distance(polygon[0], polygon[3])  # links
-    right_h  = euclidean_distance(polygon[1], polygon[2])  # rechts
-    # Mittelwerte nehmen
-    avg_w_pixels = (top_w + bottom_w) / 2
-    avg_h_pixels = (left_h + right_h) / 2
-    # px/mm berechnen
-    pixels_per_mm_w = avg_w_pixels / a4_w_mm
-    pixels_per_mm_h = avg_h_pixels / a4_p_mm
-    return (pixels_per_mm_w + pixels_per_mm_h) / 2
-
-def px_to_mm(pixel_dist, pixels_per_mm):
-    return pixel_dist / pixels_per_mm
-# ----------------- 3. Kantenextraktion -----------------
-def extract_edges(gray, thresh):
+def preprocess_image(image, bin_thresh):
     kernel = np.ones((3, 3), np.uint8)
-    _, binary = cv2.threshold(gray, thresh, 255, cv2.THRESH_BINARY_INV)
-    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=4)
-    edges = cv2.Canny(closed, thresh, thresh + 50)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, binary = cv2.threshold(gray, bin_thresh, 255, cv2.THRESH_BINARY_INV)
+    closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=10)
+    edges = cv2.Canny(closed, bin_thresh + 50, bin_thresh + 130)
     dilated = cv2.dilate(edges, kernel, iterations=1)
     return binary, closed, edges, dilated
 
-# ----------------- 4. Hough-Transformation -----------------
-def apply_hough_inbus(edges, image):
+# ----------------- 3. Hough-Transformation -----------------
+def apply_hough(edges, image):
     img = image.copy()
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180,
-                            threshold=50, minLineLength=20, maxLineGap=10)
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=15,
+                            minLineLength=10, maxLineGap=5) # Hough-Linien
+    if lines is None:
+        return img
     h, w = img.shape[:2]
-    center_x = w // 2
-    center_y = h // 2
+    cx, cy = w // 2, h // 2
     selected_lines = []
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            # Distanz berechnen
-            euc_dist = euclidean_distance((x1, y1), (x2, y2))
-            mx = (x1 + x2) // 2
-            my = (y1 + y2) // 2
-            # Nur Linien im Zentrum
-            if abs(mx - center_x) < 0.5 * w and abs(my - center_y) < 0.5 * h:
-                selected_lines.append((euc_dist, (x1, y1, x2, y2)))
-        # Nach Länge sortieren, größte zuerst
-        selected_lines = sorted(selected_lines, key=lambda x: x[0], reverse=True)
-        if len(selected_lines) >= 1:
-            x1, y1, x2, y2 = selected_lines[0][1]
-            cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)  # lang = grün
-
-        if len(selected_lines) >= 2:
-            x1, y1, x2, y2 = selected_lines[-2][1]
-            cv2.line(img, (x1, y1), (x2, y2), (0, 0, 255), 3)  # kurz = rot
+    for x1, y1, x2, y2 in lines.reshape(-1, 4):
+        # Linien im Zentrum hervorheben
+        mid_x, mid_y = (x1 + x2) // 2, (y1 + y2) // 2
+        if abs(mid_x - cx) < 0.25 * w and abs(mid_y - cy) < 0.25 * h:
+            length = np.hypot(x2 - x1, y2 - y1) # Die Euklidische Distanz berechnen
+            selected_lines.append((length, (x1, y1, x2, y2)))
+    if not selected_lines:
+        return img
+    selected_lines.sort(key=lambda x: x[0], reverse=True) # Absteigend sortieren
+    longest = selected_lines[0] # längste Linie
+    shortest = selected_lines[4] if len(selected_lines) > 4 else selected_lines[-1] # kürzeste
+    # Umrechnung in mm
+    pixels_per_mm = calculate_pixels_per_mm(img.shape)
+    # Annotation im Image
+    for length, (x1, y1, x2, y2) in [longest, shortest]:
+        length_mm = px_to_mm(length, pixels_per_mm)
+        draw_line_with_text(img, x1, y1, x2, y2, length_mm)
     return img
 
-def apply_hough_inbus_all(edges, image):
-    img = image.copy()
-    h, w = img.shape[:2]
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50,
-                            minLineLength=30, maxLineGap=10)
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            length = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            # Optional: nur Linien über 25px Länge anzeigen
-            if length:
-                cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    return img
+# ----------------- 4. Längenmessung in mm -----------------
+def calculate_pixels_per_mm(image_shape, a4_width_mm=210, a4_height_mm=297):
+    h, w = image_shape[:2]
+    avg_pixels_per_mm_width = w / a4_width_mm
+    avg_pixels_per_mm_height = h / a4_height_mm
+    return (avg_pixels_per_mm_width + avg_pixels_per_mm_height) / 2
+
+def px_to_mm(pixel_length, pixels_per_mm):
+    return pixel_length / pixels_per_mm
+
+def draw_line_with_text(img, x1, y1, x2, y2, length_mm, color=(0, 255, 0)):
+    cv2.line(img, (x1, y1), (x2, y2), color, 3)
+    mid_x = (x1 + x2) // 2
+    mid_y = (y1 + y2) // 2
+    cv2.putText(img,
+                f"{length_mm:.1f}mm",
+                (mid_x, mid_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                2,
+                cv2.LINE_AA)
+
+# ----------------- Speichern -----------------
+def ensure_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+def save_steps(steps, output_dir="output_steps"):
+    ensure_dir(output_dir)
+    for name, img in steps.items():
+        # für Graustufenbilder in BGR zurückwandeln
+        if img.ndim == 2:
+            out = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        else:
+            out = img
+        path = os.path.join(output_dir, f"{name}.png")
+        cv2.imwrite(path, out)
+        print(f"Gespeichert: {path}")
 
 # ----------------- Hauptablauf -----------------
-input_path = "images/inpus-2.jpg"
-scale_percent = 35
-thresh = 125
-a4_w_mm = 210
-a4_h_mm = 270
+def main():
+    # Vorgehensweise
+    img = load_and_resize(image_path="images/inpus-4.jpg")
+    binary, closed, edges, dilated = preprocess_image(img, bin_thresh=100)
+    hough_img= apply_hough(dilated, img)
 
-image = load_and_resize(input_path, scale_percent)
-gray = preprocess_image(image)
-binary, closed, edges, dilated = extract_edges(gray, thresh)
-hough_result =  apply_hough_inbus_all(dilated, image)
+    steps = {
+        "Original_resized": img,
+        "Binary": binary,
+        "Closing": closed,
+        "Canny": edges,
+        "Dilated": dilated,
+        "Hough": hough_img
+    }
+    save_steps(steps)
 
-# ----------------- Darstellung -----------------
-processed_images = {
-    "Original": image,
-    "Graustufen": gray,
-    "Binarisiert": binary,
-    "Closing": closed, # n.Delation + n.Erosion
-    "Kanten (Canny)": edges,
-    "Hough-Linien": hough_result
-}
-
-fig, axs = plt.subplots(3, 3, figsize=(30, 20), facecolor='white')
-axs = axs.flatten()
-
-for idx, (title, img) in enumerate(processed_images.items()):
-    cmap = 'gray' if len(img.shape) == 2 else None
-    axs[idx].imshow(img, cmap=cmap)
-    axs[idx].set_title(f"{idx+1}. {title}", fontsize=12)
-    axs[idx].axis('off')
-    axs[idx].set_facecolor('white')
-
-# Leere Felder ausblenden
-for ax in axs[len(processed_images):]:
-    ax.axis('off')
-
-plt.tight_layout()
-plt.subplots_adjust(wspace=0.15, hspace=0.15)
-plt.show()
+if __name__ == '__main__':
+    main()
