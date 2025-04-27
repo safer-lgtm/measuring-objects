@@ -22,10 +22,10 @@ def preprocess_image(image, bin_thresh):
     dilated = cv2.dilate(edges, kernel, iterations=1)
     return binary, closed, edges, dilated
 
-# ----------------- 3. Hough-Transformation -----------------
-def apply_hough(edges, image):
+# ----------------- 3a. Hough für Inbusschlüssel Linien -----------------
+def apply_hough_center_lines(image, processed_image, pixels_per_mm):
     img = image.copy()
-    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=15,
+    lines = cv2.HoughLinesP(processed_image, rho=1, theta=np.pi/180, threshold=15,
                             minLineLength=10, maxLineGap=5) # Hough-Linien
     if lines is None:
         return img
@@ -50,6 +50,27 @@ def apply_hough(edges, image):
         length_mm = px_to_mm(length, pixels_per_mm)
         draw_line_with_text(img, x1, y1, x2, y2, length_mm)
     return img
+
+# ----------------- 3b. Hough für A4-Blatt Linien -----------------
+def apply_hough_a4_lines(image, processed_image):
+    img = image.copy()
+    lines = cv2.HoughLinesP(processed_image, rho=1, theta=np.pi/180, threshold=50,
+                            minLineLength=100, maxLineGap=20)  # stärkere Filter für A4 Konturen
+    if lines is None:
+        return None, img
+    h, w = img.shape[:2]
+    selected_lines = []
+    for x1, y1, x2, y2 in lines.reshape(-1, 4):
+        # Lange Linien filtern
+        length = np.hypot(x2 - x1, y2 - y1)
+        if length > 0.5 * min(w, h):  # nur sehr lange Linien behalten
+            selected_lines.append((length, (x1, y1, x2, y2)))
+    if not selected_lines:
+        return None, img
+    # Linien ins Bild zeichnen
+    for length, (x1, y1, x2, y2) in selected_lines:
+        cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    return selected_lines, img
 
 # ----------------- 4. Längenmessung in mm -----------------
 def calculate_pixels_per_mm(image_shape, a4_width_mm=210, a4_height_mm=297):
@@ -93,20 +114,26 @@ def save_steps(steps, output_dir="output_steps"):
 
 # ----------------- Hauptablauf -----------------
 def main():
-    # Vorgehensweise
     img = load_and_resize(image_path="images/inpus-4.jpg")
     binary, closed, edges, dilated = preprocess_image(img, bin_thresh=100)
-    hough_img= apply_hough(dilated, img)
 
-    steps = {
-        "Original_resized": img,
-        "Binary": binary,
-        "Closing": closed,
-        "Canny": edges,
-        "Dilated": dilated,
-        "Hough": hough_img
-    }
-    save_steps(steps)
+    # A4 Linien erkennen
+    a4_lines, a4_img = apply_hough_a4_lines(img, dilated)
+    if a4_lines:
+        pixels_per_mm = calculate_pixels_per_mm(img.shape)
+        # Inbus Linien erkennen (nur Zentrum)
+        hough_img = apply_hough_center_lines(img, dilated, pixels_per_mm)
+
+        steps = {
+            "Original_resized": img,
+            "Binary": binary,
+            "Closing": closed,
+            "Canny": edges,
+            "Dilated": dilated,
+            "A4_detected_Hough": a4_img,
+            "Hough_Lines_Center": hough_img
+        }
+        save_steps(steps)
 
 if __name__ == '__main__':
     main()
