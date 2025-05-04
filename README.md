@@ -55,6 +55,10 @@ Zur präzisen Vermessung wird folgende Bildverarbeitungskette eingesetzt:
 
    Die gemessenen Werte werden direkt im Bild als **Längenbeschriftung** eingeblendet.
 
+## Ergebnis
+![Detected_Objects_with_mm](https://github.com/user-attachments/assets/d163cbb0-874c-483a-b983-bdc2211a9126)
+
+
 ## Besonderheiten
 
 - Die größte Herausforderung besteht in der präzisen Vermessung von asymmetrischen Objekten wie einem Inbusschlüssel.
