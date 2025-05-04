@@ -25,9 +25,35 @@ In modernen Fräsmaschinen kann ein falsch dimensionierter Rohling zur Kollision
 - und das Ergebnis in **Millimeter** ausgibt.
 
 ## Vorgehensweise
+![grafik](https://github.com/user-attachments/assets/4c45e473-2206-4093-8e09-4b455a624856)
 
-![Konzept V2.png](images/Konzept V2.png)
+Zur präzisen Vermessung wird folgende Bildverarbeitungskette eingesetzt:
 
+1. **A4-Referenz erkennen**
+   Ein A4-Blatt dient als metrische Referenz. Es wird über Kantenerkennung und Konturenlokalisierung im Bild erkannt.
+
+2. **Perspektivische Entzerrung (Top-Down-Ansicht)**
+   Die A4-Kontur wird genutzt, um das Bild perspektivisch zu entzerren. Dadurch kann das A4-Blatt als maßstabsgetreues Rechteck angenommen werden.
+
+3. **Objekterkennung per Konturanalyse**
+   Im entzerrten Bild werden relevante Objekte erkannt, Randbereiche ignoriert, und mit **Bounding Boxes** versehen.
+
+4. **Umrechnung von Pixel in Millimeter**
+   Da die reale Größe eines A4-Blattes bekannt ist (210 × 297 mm), wird die Auflösung im Bild berechnet:
+
+   ```python
+   px_per_mm_w = warped_width / 210
+   px_per_mm_h = warped_height / 297
+   pixels_per_mm = (px_per_mm_w + px_per_mm_h) / 2
+   ```
+
+   Mit dieser Auflösung werden erkannte Objektkanten umgerechnet:
+
+   ```python
+   mm = pixel_length / pixels_per_mm
+   ```
+
+   Die gemessenen Werte werden direkt im Bild als **Längenbeschriftung** eingeblendet.
 
 ## Besonderheiten
 
