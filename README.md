@@ -60,3 +60,9 @@ Zur präzisen Vermessung wird folgende Bildverarbeitungskette eingesetzt:
 - Die größte Herausforderung besteht in der präzisen Vermessung von asymmetrischen Objekten wie einem Inbusschlüssel.
 - Lichtverhältnisse und Bildschärfe haben entscheidenden Einfluss auf die Genauigkeit der Ergebnisse.
 - Erweiterbar mit Kalibrierung über bekannte Objekte (z.B. Münze, Papierkante).
+
+## Referenzen
+- [Contour Detektion](https://learnopencv.com/contour-detection-using-opencv-python-c/)
+- [Measuring Size - Bounding Box](https://pyimagesearch.com/2016/03/28/measuring-size-of-objects-in-an-image-with-opencv/)
+- [Contour Approximation](https://pyimagesearch.com/2021/10/06/opencv-contour-approximation/)
+- [Grafik zeichnen](https://excalidraw.com/)
