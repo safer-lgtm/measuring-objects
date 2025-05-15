@@ -25,38 +25,35 @@ In modernen Fräsmaschinen kann ein falsch dimensionierter Rohling zur Kollision
 - und das Ergebnis in **Millimeter** ausgibt.
 
 ## Vorgehensweise
-![grafik](https://github.com/user-attachments/assets/4c45e473-2206-4093-8e09-4b455a624856)
+![Konzept Final](https://github.com/user-attachments/assets/d1a2f0a2-9e6f-4fbf-8b79-67523e60bac9)
 
 Zur präzisen Vermessung wird folgende Bildverarbeitungskette eingesetzt:
 
-1. **A4-Referenz erkennen**
-   Ein A4-Blatt dient als metrische Referenz. Es wird über Kantenerkennung und Konturenlokalisierung im Bild erkannt.
+1. **Referenz erkennen**
+   Muss unten rechts liegen (z.B. Ausweis, Münze, usw.). Dient als metrische Referenz. Es wird über Kantenerkennung und Konturenlokalisierung im Bild erkannt.
 
-2. **Perspektivische Entzerrung (Top-Down-Ansicht)**
-   Die A4-Kontur wird genutzt, um das Bild perspektivisch zu entzerren. Dadurch kann das A4-Blatt als maßstabsgetreues Rechteck angenommen werden.
-
-3. **Objekterkennung per Konturanalyse**
+2. **Objekterkennung per Konturanalyse**
    Im entzerrten Bild werden relevante Objekte erkannt, Randbereiche ignoriert, und mit **Bounding Boxes** versehen.
 
-4. **Umrechnung von Pixel in Millimeter**
-   Da die reale Größe eines A4-Blattes bekannt ist (210 × 297 mm), wird die Auflösung im Bild berechnet:
+3**Umrechnung von Pixel in Millimeter**
+   Da die reale Größe eines gegebenen Referenz bekannt ist (Ausweis: z.B. 85,6 mm x 50,4 mm), wird die Auflösung im Bild berechnet, durch die Breite des Referenz, nähmlich hier nur 85,6 muss als Parameter gegeben wird:
 
    ```python
-   px_per_mm_w = warped_width / 210
-   px_per_mm_h = warped_height / 297
-   pixels_per_mm = (px_per_mm_w + px_per_mm_h) / 2
+   pixels_per_metric = ref_length_px / known_width_mm
    ```
 
    Mit dieser Auflösung werden erkannte Objektkanten umgerechnet:
 
    ```python
-   mm = pixel_length / pixels_per_mm
+     # Umrechnung von Pixel zu mm
+     width_mm = width_px / pixels_per_metric
+     height_mm = height_px / pixels_per_metric
    ```
 
    Die gemessenen Werte werden direkt im Bild als **Längenbeschriftung** eingeblendet.
 
 ## Ergebnis
-![Detected_Objects_with_mm](https://github.com/user-attachments/assets/d163cbb0-874c-483a-b983-bdc2211a9126)
+![Inbusschluessel_measured](https://github.com/user-attachments/assets/096ded96-6d47-45ca-8656-6b30438342a3)
 
 
 ## Besonderheiten
