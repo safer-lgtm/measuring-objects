@@ -89,7 +89,7 @@ def measure_objects(image, edged, pixels_per_metric):
         cv2.putText(annotated_image, f"{height_mm:.1f} mm", (int(mid_h[0]) + 10, int(mid_h[1]) - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
     # Bild mit Annotation speichern
-    save_image(annotated_image, "Inbusschluessel_measured")
+    save_image(annotated_image, "BoundingBox_Measurement")
 
 # ---------- Hauptablauf ----------
 # Führt das gesamte Programm aus
@@ -102,4 +102,4 @@ def run(image_path, known_width_mm):
     measure_objects(image, edged, pixels_per_metric)
     print("Messung abgeschlossen. Ergebnisse unter 'output_steps/' gespeichert.")
 if __name__ == '__main__':
-    run("images/Inbusschluessel.jpg", known_width_mm=25.6)  # Beispiel: Referenz ist ein Ausweis (ID-1 Format)
+    run("images/Inbusschluessel.jpg", known_width_mm=85.6)  # Beispiel: Referenz ist ein Ausweis (ID-1 Format)
