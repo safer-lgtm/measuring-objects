@@ -53,7 +53,7 @@ Zur präzisen Vermessung wird folgende Bildverarbeitungskette eingesetzt:
    Die gemessenen Werte werden direkt im Bild als **Längenbeschriftung** eingeblendet.
 
 ## Ergebnis
-![Inbusschluessel_measured](https://github.com/user-attachments/assets/096ded96-6d47-45ca-8656-6b30438342a3)
+![BoundingBox_Measurement](https://github.com/user-attachments/assets/d84ab600-3fc2-49d3-b350-2972f350f674)
 
 
 ## Besonderheiten
